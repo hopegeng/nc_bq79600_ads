@@ -1,0 +1,405 @@
+/*
+ * eeprom.c
+ *
+ *  Created on: Jan 24, 2024
+ *      Author: rgeng
+ */
+
+#include <stdio.h>
+#include <stdint.h>
+#include <string.h>
+#include <Ifx_Types.h>
+#include <IfxFlash.h>
+#include <IfxCpu.h>
+
+#include "comm.h"
+#include "shell.h"
+#include "eeprom.h"
+#include "tools.h"
+#include "tle9012.h"
+
+#define TLE9012_REG_VALID_FLAG		0x5A
+
+
+#define TLE9012_REG_COUNT 			0x5F						//For the simplicty, we can store all the TLE9012 registers
+
+#define FLASH_MODULE                0                           /* Macro to select the flash (PMU) module           */
+#define DATA_FLASH_0                IfxFlash_FlashType_D0       /* Define the Data Flash Bank to be used            */
+
+#define DFLASH_NUM_SECTORS          1                           /* Number of DFLASH sectors to be erased            */
+#define DFLASH_PAGE_LENGTH          IFXFLASH_DFLASH_PAGE_LENGTH /* 0x8 = 8 Bytes (smallest unit that can be */
+#define DFLASH_STARTING_ADDRESS     0xAF000000                  /* Address of the DFLASH where the data is written  */
+#define DFLASH_NUM_PAGE_TO_FLASH    5                           /* Number of pages to flash in the DFLASH           */
+
+#define MEM(address)                *((uint32 *)(address))      /* Macro to simplify the access to a memory address */
+
+
+#define DFLASH_PAGE_SIZE_IN_WORD (DFLASH_PAGE_LENGTH/4)
+
+const uint32 p_MAC_ADDRESS = 0xAF000000;
+const uint32 p_IP_ADDRESS = 0xAF000000 + DFLASH_PAGE_LENGTH;
+const uint32 p_NETMASK = 0xAF000000 + DFLASH_PAGE_LENGTH + DFLASH_PAGE_LENGTH;
+const uint32 p_GATEWAY = 0xAF000000 + DFLASH_PAGE_LENGTH + DFLASH_PAGE_LENGTH + DFLASH_PAGE_LENGTH;
+const uint32 p_CRC = 0xAF000000 + DFLASH_PAGE_LENGTH + DFLASH_PAGE_LENGTH + DFLASH_PAGE_LENGTH + DFLASH_PAGE_LENGTH;
+const uint32 p_TLE9012_CONF = 0xAF000000 + 0x1000;	//p_CRC = 0xAF01000 	//One erase sector away from p_MAC_Address
+
+
+
+static void writeDataFlash( uint32 data_address, uint32* p_data, uint32 data_len );
+static void verifyDataFlash(void);     /* Function that verifies the data written in the Data Flash memory                 */
+static boolean ip_str_2_ip_addr( const char *ip_str, uint8 ip_addr[4] );
+static boolean mac_str_2_mac_addr( const char *mac_str, uint8 mac_addr[6] );
+
+
+//#pragma section farbss "user_test_bss"
+uint8_t network_def_config[5][8] __attribute__ ((section("NC_cpu0_dlmu"))) =
+{
+		{ 0x08, 0x01, 0x02, 0x03, 0x04, 0x05, 0x00, 0x00 },		//MAC
+		{ 192, 168, 1, 200, 0, 0, 0, 0 },		//IP & DHCP flag, the nework_def_config[1][4] is the DHCP flag, == 0: DHCP is disabled, == 1: DHCP is enabled. nework_def_config[1][5]: isouart network: 1 = Highside; 0 = lowSide
+												//nework_def_config[1][5]: isouart network: 1 = Highside; 0 = lowSide
+												//nework_def_config[1][6]: 10bits or 16bits TLE9012 ADC resolution: 0 = 16 bit, 1 = 10bit
+												//nework_def_config[1][7]: CAN interface or Network Interface: 0 = CAN, 1 = Net
+		{ 255, 255, 255, 0, 0, 0, 0, 0 },		//Net Mask
+		{ 192, 168, 1, 1, 0, 0, 0, 0 },			//Gateway
+		{ 0, 0, 0, 0, 0, 0, 0, 0 },				//CRC
+};
+
+typedef struct __packed__
+{
+	uint8 valid;		//0xA5 will be valid flag
+	uint8  reg;
+	uint16 value;
+	uint32 crc;
+} EEPROM_TLE9012_CONF_t;		//Total 8 bytes, which is the size of DFLASH_PAGE_LENGTH
+
+//#pragma section farbss "user_test_bss"
+EEPROM_TLE9012_CONF_t tle9012_config[TLE9012_REG_COUNT]  __align(8);
+
+
+
+
+static void writeDataFlash( uint32 data_address, uint32* p_data, uint32 data_len )
+{
+    uint32 page;                                                /* Variable to cycle over all the pages             */
+
+    /* --------------- ERASE PROCESS --------------- */
+    /* Get the current password of the Safety WatchDog module */
+    uint16 endInitSafetyPassword = IfxScuWdt_getSafetyWatchdogPassword();
+
+    /* Erase the sector */
+    IfxScuWdt_clearSafetyEndinit( endInitSafetyPassword );        /* Disable EndInit protection                       */
+    IfxFlash_eraseMultipleSectors( data_address, DFLASH_NUM_SECTORS ); /* Erase the given sector           */
+    IfxScuWdt_setSafetyEndinit( endInitSafetyPassword );          /* Enable EndInit protection                        */
+
+    /* Wait until the sector is erased */
+    IfxFlash_waitUnbusy( FLASH_MODULE, DATA_FLASH_0 );
+
+    /* --------------- WRITE PROCESS --------------- */
+    for(page = 0; page < DFLASH_NUM_PAGE_TO_FLASH; page++)      /* Loop over all the pages                          */
+    {
+        uint32 pageAddr = DFLASH_STARTING_ADDRESS + (page * DFLASH_PAGE_LENGTH); /* Get the address of the page     */
+
+        /* Enter in page mode */
+        IfxFlash_enterPageMode(pageAddr);
+
+        /* Wait until page mode is entered */
+        IfxFlash_waitUnbusy(FLASH_MODULE, DATA_FLASH_0);
+
+        /* Load data to be written in the page */
+        IfxFlash_loadPage2X32(pageAddr, p_data[2*page], p_data[2*page+1]); /* Load two words of 32 bits each            */
+
+        /* Write the loaded page */
+        IfxScuWdt_clearSafetyEndinit(endInitSafetyPassword);    /* Disable EndInit protection                       */
+        IfxFlash_writePage(pageAddr);                           /* Write the page                                   */
+        IfxScuWdt_setSafetyEndinit(endInitSafetyPassword);      /* Enable EndInit protection                        */
+
+        /* Wait until the data is written in the Data Flash memory */
+        IfxFlash_waitUnbusy(FLASH_MODULE, DATA_FLASH_0);
+    }
+}
+
+/* This function verifies if the data has been correctly written in the Data Flash */
+static void verifyDataFlash()
+{
+    uint32 page;                                                /* Variable to cycle over all the pages             */
+    uint32 offset;                                              /* Variable to cycle over all the words in a page   */
+    uint32 errors = 0;                                          /* Variable to keep record of the errors            */
+
+    /* Verify the written data */
+    for(page = 0; page < DFLASH_NUM_PAGE_TO_FLASH; page++)                          /* Loop over all the pages      */
+    {
+        uint32 pageAddr = DFLASH_STARTING_ADDRESS + (page * DFLASH_PAGE_LENGTH);    /* Get the address of the page  */
+
+        for(offset = 0; offset < DFLASH_PAGE_LENGTH; offset += 0x4)                 /* Loop over the page length    */
+        {
+            /* Check if the data in the Data Flash is correct */
+            if(MEM(pageAddr + offset) != 0xaa55)
+            {
+                /* If not, count the found errors */
+                errors++;
+            }
+        }
+    }
+
+    /* If the data is correct, turn on the LED2 */
+    if(errors == 0)
+    {
+    	//Error handling
+    }
+}
+
+
+static void update_network_2_flash( void )
+{
+	uint32 crc;
+	uint32 *p_data = (uint32*)network_def_config;
+	uint32* p_crc = (uint32*)network_def_config[4];
+
+	crc = crc32( (uint8*)network_def_config, 32 );
+	p_crc[0] = p_crc[1] = crc;
+	writeDataFlash( p_MAC_ADDRESS, p_data, 10 );		//10 uint32
+
+}
+
+
+
+static inline void writeTle9012DFlash( uint32 *p_data )
+{
+    uint32 page;                                                /* Variable to cycle over all the pages             */
+
+    /* --------------- ERASE PROCESS --------------- */
+    /* Get the current password of the Safety WatchDog module */
+    uint16 endInitSafetyPassword = IfxScuWdt_getSafetyWatchdogPassword();
+
+    /* Erase the sector */
+    IfxScuWdt_clearSafetyEndinit( endInitSafetyPassword );        /* Disable EndInit protection                       */
+    IfxFlash_eraseMultipleSectors( p_TLE9012_CONF, DFLASH_NUM_SECTORS ); /* Erase the given sector           */
+    IfxScuWdt_setSafetyEndinit( endInitSafetyPassword );          /* Enable EndInit protection                        */
+
+    /* Wait until the sector is erased */
+    IfxFlash_waitUnbusy( FLASH_MODULE, DATA_FLASH_0 );
+
+    /* --------------- WRITE PROCESS --------------- */
+    for(page = 0; page < 95; page++)      /* Loop over all the pages, 8 * 0x5f / 8, 8 bytes per programming page   */
+    {
+        uint32 pageAddr = p_TLE9012_CONF + (page * DFLASH_PAGE_LENGTH); /* Get the address of the page     */
+
+        /* Enter in page mode */
+        IfxFlash_enterPageMode(pageAddr);
+
+        /* Wait until page mode is entered */
+        IfxFlash_waitUnbusy(FLASH_MODULE, DATA_FLASH_0);
+
+        /* Load data to be written in the page */
+        IfxFlash_loadPage2X32(pageAddr, p_data[2*page], p_data[2*page+1]); /* Load two words of 32 bits each            */
+
+        /* Write the loaded page */
+        IfxScuWdt_clearSafetyEndinit(endInitSafetyPassword);    /* Disable EndInit protection                       */
+        IfxFlash_writePage(pageAddr);                           /* Write the page                                   */
+        IfxScuWdt_setSafetyEndinit(endInitSafetyPassword);      /* Enable EndInit protection                        */
+
+        /* Wait until the data is written in the Data Flash memory */
+        IfxFlash_waitUnbusy(FLASH_MODULE, DATA_FLASH_0);
+    }
+}
+
+static void eraseTLE8912Config( void )
+{
+    uint32 page;                                                /* Variable to cycle over all the pages             */
+
+    /* --------------- ERASE PROCESS --------------- */
+    /* Get the current password of the Safety WatchDog module */
+    uint16 endInitSafetyPassword = IfxScuWdt_getSafetyWatchdogPassword();
+
+    /* Erase the sector */
+    IfxScuWdt_clearSafetyEndinit( endInitSafetyPassword );        /* Disable EndInit protection                       */
+    IfxFlash_eraseMultipleSectors( p_TLE9012_CONF, DFLASH_NUM_SECTORS ); /* Erase the given sector           */
+    IfxScuWdt_setSafetyEndinit( endInitSafetyPassword );          /* Enable EndInit protection                        */
+
+    /* Wait until the sector is erased */
+    IfxFlash_waitUnbusy( FLASH_MODULE, DATA_FLASH_0 );
+}
+
+boolean eeprom_read_net_config( void )
+{
+	uint32 crc;
+	uint32 *p_data = (uint32*)network_def_config;
+	uint32* p_crc_flash = (uint32*)p_CRC;
+
+	crc = crc32( (uint8*)p_MAC_ADDRESS, 32 );
+
+	if( crc != p_crc_flash[0] )
+	{
+		uint32* pCrc = (uint32*)network_def_config[4];
+		pCrc[0] = pCrc[1] = crc;
+		PRINTF( "\r\nFailed on CRC: read = 0x%x, calculated = %x\r\n", *p_crc_flash, crc );
+		writeDataFlash( p_MAC_ADDRESS, p_data, 10 );		//10 uint32
+		return FALSE;
+	}
+	else
+	{
+		uint8* p_network = (uint8*)p_MAC_ADDRESS;
+		for( int i = 0; i < 6; i++ )
+		{
+			network_def_config[0][i] = p_network[i];
+		}
+		for( int i = 0; i < 4; i++ )
+		{
+			network_def_config[1][i] = p_network[i+8];		//ip
+			network_def_config[2][i] = p_network[i+2*8];
+			network_def_config[3][i] = p_network[i+3*8];
+		}
+		network_def_config[1][4] = p_network[8+4];		//DHCP
+		network_def_config[1][5] = p_network[8+5];		//ISOUART NETWORK
+		network_def_config[1][6] = p_network[8+6];		//TLE9012 ADC resolution
+		network_def_config[1][7] = p_network[8+7];		//COMM Interface: 0 = CAN, 1 = Network
+
+	}
+
+	isouart_apply_network( (ISOUART_NetArch_t)network_def_config[1][5] );
+	tle9012_appyBitWidth( (TLE9012_BITWIDTH_t)network_def_config[1][6] );
+	comm_apply_interface( (ECU8TR_COMM_INTERFACE_e)network_def_config[1][7] );
+
+	return TRUE;
+
+}
+
+boolean eeprom_set_dhcp( const char *dhcp_str )
+{
+	if( TRUE == strcmp("1", dhcp_str) == 0 )
+	{
+		network_def_config[1][4] = 1;
+		update_network_2_flash();
+		return TRUE;
+	}
+	else
+	{
+		network_def_config[1][4] = 0;
+		update_network_2_flash();
+		return TRUE;
+	}
+
+}
+
+boolean eeprom_set_mac( const char *ip_str )
+{
+	if( TRUE == mac_str_2_mac_addr( ip_str, network_def_config[0] ) )
+	{
+		update_network_2_flash();
+		return TRUE;
+	}
+	return FALSE;
+}
+boolean eeprom_set_ip( const char *ip_str )
+{
+	if( TRUE == convert_ip_to_uint8( ip_str, network_def_config[1] ) )
+	{
+		update_network_2_flash();
+		return TRUE;
+	}
+	return FALSE;
+}
+
+boolean eeprom_set_netmask( const char *ip_str )
+{
+
+	if( TRUE == convert_ip_to_uint8( ip_str, network_def_config[2] ) )
+	{
+		update_network_2_flash();
+		return TRUE;
+	}
+	return FALSE;
+}
+
+boolean eeprom_set_gateway( const char *ip_str )
+{
+	if( TRUE == convert_ip_to_uint8( ip_str, network_def_config[3] ) )
+	{
+		update_network_2_flash();
+		return TRUE;
+	}
+	return FALSE;
+}
+
+
+
+boolean eeprom_set_isouartNetwork( ISOUART_NetArch_t network )
+{
+	if( network >= ISOUART_NET_NONE )
+	{
+		return FALSE;
+	}
+
+	network_def_config[1][5] = (uint8)network;
+	update_network_2_flash();
+
+	return TRUE;
+}
+
+boolean eeprom_set_comm_interface( ECU8TR_COMM_INTERFACE_e interface )
+{
+	network_def_config[1][7] = (uint8)interface;
+	update_network_2_flash();
+	return TRUE;
+}
+
+/* By default it is 16bit resolution, because
+ * network_def_config[1][6] = 0: 16 bit
+ * network_def_config[1][6] = 1: 10 bit
+ */
+boolean eeprom_set_tle9012_resolution( TLE9012_BITWIDTH_t bitWidth )
+{
+
+	network_def_config[1][6] = (uint8)bitWidth;
+	update_network_2_flash();
+
+	return TRUE;
+}
+
+
+
+
+void eeprom_read_tle9012_conf( void )
+{
+	memcpy( (void*)&tle9012_config, (void*)p_TLE9012_CONF, sizeof(EEPROM_TLE9012_CONF_t) * TLE9012_REG_COUNT );
+}
+
+void eeprom_persist_reg( uint8 reg, uint16 val )
+{
+	uint8 reg_idx = reg;
+
+
+	PRINTF( "The persist reg = %d, val = 0x%x\r\n", reg, val );
+	tle9012_config[reg_idx].valid = TLE9012_REG_VALID_FLAG;
+	tle9012_config[reg_idx].reg = reg;
+	tle9012_config[reg_idx].value = val;
+	tle9012_config[reg_idx].crc = crc32( (uint8*)&tle9012_config[reg_idx], 4 );
+	PRINTF( "The persist reg: valid = 0x%x, reg = %d, val = 0x%x, crc = 0x%x\r\n", tle9012_config[reg_idx].valid, tle9012_config[reg_idx].reg,
+			tle9012_config[reg_idx].value, tle9012_config[reg_idx].crc );
+
+	writeTle9012DFlash( (uint32*)tle9012_config );
+}
+
+
+boolean eeprom_get_tle9012_reg( uint8 reg_idx, uint16 *pVal )
+{
+	if( tle9012_config[reg_idx].valid == TLE9012_REG_VALID_FLAG )
+	{
+		uint32 crc;
+
+		crc = crc32( (uint8*)&tle9012_config[reg_idx], 4 );
+		if( crc == tle9012_config[reg_idx].crc )
+		{
+			*pVal = tle9012_config[reg_idx].value;
+			return TRUE;
+		}
+	}
+
+	return FALSE;
+}
+
+
+void eeprom_erase_config( void )
+{
+	eraseTLE8912Config();
+}
