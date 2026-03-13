@@ -63,9 +63,8 @@ typedef enum
 	ECU8TR_TLE9012_NONE = 6,
 } ECU8TR_TLE9012_State_e;
 
-#define __packed__
-
-typedef struct __packed__
+#define __packed__              //The ADS tasking compiler doesn't support __packed__ data
+typedef struct  __packed__
 {
 
 	ECU8TR_CMD_e cmd_code;
@@ -88,6 +87,7 @@ typedef struct __packed__
 	uint32 crc;
 	uint16 delimiter;	/* "$$" */
 } ECU8TR_DATA_t;
+
 
 typedef struct __packed__
 {

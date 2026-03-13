@@ -12,5 +12,4 @@ canlib-1.15.483-py2.py3-none-any.whl
 *.bat
 *.bak
 env/
-/.cproject
 TriCore Debug (TASKING)/

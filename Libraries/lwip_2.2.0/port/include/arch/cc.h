@@ -41,8 +41,7 @@
 #define LWIP_PROVIDE_ERRNO              1
 
 /* Define generic types used in lwIP. */
-
-#if 0   //
+#if 0
 typedef uint8_t   u8_t;
 typedef int8_t    s8_t;
 typedef uint16_t  u16_t;
