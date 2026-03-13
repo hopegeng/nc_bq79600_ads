@@ -107,11 +107,23 @@ void core2_main(void)
 	}
 	else
 	{
-		PRINTF( "Failed to talk to BQ79600, please check the connection\r\n" );
-		while( 1 )
-		{
-			delay_ms( 1000 );
-		}
+	    uint8 is_connected = 0;
+
+	    while( is_connected == 0 )
+	    {
+            PRINTF( "Failed to talk to BQ79600, please check the connection\r\n" );
+            delay_ms( 1000 );
+            if( 0 == bq79xxx_doInit_Rev() )
+            {
+                PRINTF( "BQ79600: Auto Addressing in Reverse way.\r\n" );
+                is_connected = 1;
+            }
+            else if( 0 == bq79xxx_doInit() )
+            {
+                PRINTF( "BQ79600: Auto Addressing in forward way.\r\n" );
+                is_connected = 1;
+            }
+	    }
 	}
 
 	ecu8tr_can_status = ECU8TR_CAN_TLE9012_WAKEUP;
