@@ -54,88 +54,56 @@ static void task_app_led2(void *arg)
 
 static void task_r_g_led(void *arg)
 {
-	ECU8TR_COMM_INTERFACE_e comm_interface;
+    while (1)
+    {
+        if( bootloader_get_upgradeStatus() == UPGRADE_STATUS_IN_PROGRESS )
+        {
+            IfxPort_setPinLow( &MODULE_P33, 14 );
+            IfxPort_togglePin( &MODULE_P34, 4 );
+            vTaskDelay(pdMS_TO_TICKS(100));
+            continue;
+        }
+        else if( bootloader_get_upgradeStatus() == UPGRADE_STATUS_FAILURE )
+        {
+            PRINTF( "The upgrade failed\r\n" );
+            IfxPort_setPinLow( &MODULE_P33, 14 );
+            IfxPort_togglePin( &MODULE_P34, 4 );
+            vTaskDelay(pdMS_TO_TICKS(100));
+            continue;
+        }
+        else if( bootloader_get_upgradeStatus() == UPGRADE_STATUS_SUCCESS )
+        {
+            IfxPort_setPinHigh( &MODULE_P33, 14 );  //Green
+            IfxPort_setPinLow( &MODULE_P34, 4 );    //RED
+            vTaskDelay(pdMS_TO_TICKS(100));
+            continue;
+        }
 
-	comm_interface = comm_get_interface();
+        if( ecu8tr_getTLE9012State() == ECU8TR_TLE9012_WAKEUP_DONE  )
+        {
+            IfxPort_setPinHigh( &MODULE_P33, 14 );  //Green ON
+            IfxPort_setPinLow( &MODULE_P34, 4 );    //RED OFF
+        }
+        else if(ecu8tr_getTLE9012State() == ECU8TR_TLE9012_DATA_STREAMING )
+        {
+            IfxPort_togglePin( &MODULE_P33, 14 );   //Green
+            IfxPort_setPinLow( &MODULE_P34, 4 );    //RED OFF
+        }
+        else if( (ecu8tr_getTLE9012State()== ECU8TR_TLE9012_IDLE) || (ecu8tr_getTLE9012State() == ECU8TR_TLE9012_SLEEP) )
+        {
+            IfxPort_setPinLow( &MODULE_P33, 14 );
+            IfxPort_togglePin( &MODULE_P34, 4 );
+        }
+        else
+        {
+            IfxPort_setPinHigh( &MODULE_P33, 14 );
+            IfxPort_togglePin( &MODULE_P34, 4 );
+        }
 
-	//while( comm_interface == ECU8TR_COMM_INTERFACE_CAN )
-	while( 1 )
-	{
-		if( ecu8tr_can_status == ECU8TR_CAN_TLE9012_NOT_CONNECT )
-		{
-			IfxPort_setPinLow( &MODULE_P33, 14 );
-			IfxPort_togglePin( &MODULE_P34, 4 );		//Flash RED LED
-			vTaskDelay(pdMS_TO_TICKS(500));
-			continue;
-		}
-		else if( ecu8tr_can_status == ECU8TR_CAN_TLE9012_WAKEUP )
-		{
-			IfxPort_setPinHigh( &MODULE_P33, 14 );	//Green ON
-			IfxPort_setPinLow( &MODULE_P34, 4 );	//RED OFF
-		}
-		else if( ecu8tr_can_status == ECU8TR_CAN_DATA_STREAMING )
-		{
-			IfxPort_togglePin( &MODULE_P33, 14 );	//Green
-			IfxPort_setPinLow( &MODULE_P34, 4 );	//RED OFF
-		}
-		else
-		{
-			IfxPort_setPinLow( &MODULE_P33, 14 );
-			IfxPort_togglePin( &MODULE_P34, 4 );		//Flash RED LED
-		}
-
-		vTaskDelay(pdMS_TO_TICKS(500));
-	}
-
-	while (1)
-	{
-		if( bootloader_get_upgradeStatus() == UPGRADE_STATUS_IN_PROGRESS )
-		{
-			IfxPort_setPinLow( &MODULE_P33, 14 );
-			IfxPort_togglePin( &MODULE_P34, 4 );
-			vTaskDelay(pdMS_TO_TICKS(100));
-			continue;
-		}
-		else if( bootloader_get_upgradeStatus() == UPGRADE_STATUS_FAILURE )
-		{
-			PRINTF( "The upgrade failed\r\n" );
-			IfxPort_setPinLow( &MODULE_P33, 14 );
-			IfxPort_togglePin( &MODULE_P34, 4 );
-			vTaskDelay(pdMS_TO_TICKS(100));
-			continue;
-		}
-		else if( bootloader_get_upgradeStatus() == UPGRADE_STATUS_SUCCESS )
-		{
-			IfxPort_setPinHigh( &MODULE_P33, 14 );	//Green
-			IfxPort_setPinLow( &MODULE_P34, 4 );	//RED
-			vTaskDelay(pdMS_TO_TICKS(100));
-			continue;
-		}
-
-		if( ecu8tr_getTLE9012State() == ECU8TR_TLE9012_WAKEUP_DONE  )
-		{
-			IfxPort_setPinHigh( &MODULE_P33, 14 );	//Green ON
-			IfxPort_setPinLow( &MODULE_P34, 4 );	//RED OFF
-		}
-		else if(ecu8tr_getTLE9012State() == ECU8TR_TLE9012_DATA_STREAMING || ecu8tr_getTLE9012State() == ECU8TR_TLE9012_GET_DIAG )
-		{
-			IfxPort_togglePin( &MODULE_P33, 14 );	//Green
-			IfxPort_setPinLow( &MODULE_P34, 4 );	//RED OFF
-		}
-		else if( (ecu8tr_getTLE9012State()== ECU8TR_TLE9012_IDLE) || (ecu8tr_getTLE9012State() == ECU8TR_TLE9012_SLEEP) )
-		{
-			IfxPort_setPinLow( &MODULE_P33, 14 );
-			IfxPort_togglePin( &MODULE_P34, 4 );
-		}
-		else
-		{
-			IfxPort_setPinHigh( &MODULE_P33, 14 );
-			IfxPort_togglePin( &MODULE_P34, 4 );
-		}
-
-		vTaskDelay(pdMS_TO_TICKS(500));
-	}
+        vTaskDelay(pdMS_TO_TICKS(500));
+    }
 }
+
 
 
 void start_led( void )

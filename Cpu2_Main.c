@@ -91,7 +91,8 @@ void core2_main(void)
     IfxCpu_waitEvent(&g_cpuSyncEvent, 1);
     
 
-    PRINTF( "This is a hello from CORE2\r\n" );
+    ////PRINTF( "This is a hello from CORE2\r\n" );
+    //PRINTF( "This is a bootloader tester*************\r\n" );
 
 
     delay_ms( 1000 );

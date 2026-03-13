@@ -126,7 +126,7 @@
 							<tool id="com.infineon.aurix.buildsystem.managed.tool.c.assembler.tasking.1532282614" name="TASKING Assembler" superClass="com.infineon.aurix.buildsystem.managed.tool.c.assembler.tasking">
 								<inputType id="com.infineon.aurix.buildsystem.managed.tool.c.assembler.tasking.input.104063640" superClass="com.infineon.aurix.buildsystem.managed.tool.c.assembler.tasking.input"/>
 							</tool>
-							<tool id="com.infineon.aurix.buildsystem.managed.tool.c.linker.tasking.759839187" name="TASKING Linker" superClass="com.infineon.aurix.buildsystem.managed.tool.c.linker.tasking">
+							<tool commandLinePattern="${COMMAND} ${FLAGS} ${OUTPUT_FLAG}&quot;${BuildArtifactFileBaseName}.elf&quot; -Wl${OUTPUT_FLAG}&quot;${BuildArtifactFileBaseName}.hex:IHEX&quot;  --chip-output=&quot;${PROJ}&quot;:BIN:0 ${INPUTS}" id="com.infineon.aurix.buildsystem.managed.tool.c.linker.tasking.759839187" name="TASKING Linker" superClass="com.infineon.aurix.buildsystem.managed.tool.c.linker.tasking">
 								<option id="com.infineon.aurix.buildsystem.managed.tool.c.linker.tasking.linkerScript.1320457037" name="Linker script" superClass="com.infineon.aurix.buildsystem.managed.tool.c.linker.tasking.linkerScript" useByScannerDiscovery="false" value="D:\workspace\Aurix\Ecu8Tr\aurix_development_studio\ti_bq79xxx_ws\Lcf_Tasking_Tricore_Tc.lsl" valueType="string"/>
 								<option id="com.infineon.aurix.buildsystem.managed.tool.c.linker.tasking.mapFileFormat.lsl.1070510580" name="Include processor and memory information" superClass="com.infineon.aurix.buildsystem.managed.tool.c.linker.tasking.mapFileFormat.lsl" useByScannerDiscovery="false" value="true" valueType="boolean"/>
 							</tool>

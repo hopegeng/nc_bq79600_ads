@@ -92,8 +92,8 @@ static void do_bootloader( void *arg, struct udp_pcb *pcb, struct pbuf *p, const
 		if( block_seq == 0xFFFFFFFF )
 		{
 			bootloader_set_upgradeStatus( UPGRADE_STATUS_SUCCESS );
-			PRINTF( "Upgrade Successfully, system rebooting..." );
 			vTaskDelay( pdMS_TO_TICKS(2000) );
+            PRINTF( "Upgrade Successfully, system rebooting..." );
 			board_reset( eSysSystem );
 		}
 	}
@@ -159,12 +159,14 @@ static void ecu8_udpServerTask( void *arg )
 	struct udp_pcb *ppcb_bq;
 
 
-	//ecu8_udpSendInit();
     PRINTF( "The UDP Server is starting\r\n" );
+
 #if !__TI__
-	ecu8_udpRecvInit();
+	ecu8_udpSendInit();
+    nettest_udpSendTask();
 #endif
 
+    ecu8_udpRecvInit(); //For upgrading the firmware
 
 	ppcb_bq = udp_new();
 	udp_bind( ppcb_bq, IP_ADDR_ANY, 65535 );
@@ -202,7 +204,6 @@ static void ecu8_udpServerTask( void *arg )
 
         vTaskDelay( pdMS_TO_TICKS(10) ); // Yield to other tasks
 #endif
-       // nettest_udpSendTask();
     }
 }
 

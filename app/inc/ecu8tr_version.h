@@ -16,6 +16,6 @@
 
 #define ECU8TR_MAJOR	0
 #define ECU8TR_MINIOR	0
-#define ECU8TR_PATCH	2
+#define ECU8TR_PATCH	3
 
 #endif /* APP_INC_ECU8TR_VERSION_H_ */
