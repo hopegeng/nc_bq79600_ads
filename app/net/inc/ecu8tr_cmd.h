@@ -91,6 +91,7 @@ typedef struct __packed__
 
 typedef struct __packed__
 {
+    uint8 dummy;            //Since __packed__ not be supported by ADS, we put a dummy byte here so the Python code need to skip this byte
 	uint8 dev;
 	uint16 cell_volt[ TI_NUM_CELL ];
 	uint16 cell_temp[12];
