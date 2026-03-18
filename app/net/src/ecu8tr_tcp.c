@@ -866,6 +866,7 @@ static void ecu8tr_TITask( void *arg )
 				for( uint8 idx = 0; idx < TI_NUM_CELL; idx++ )
 				{
 					data.cell_volt[TI_NUM_CELL-1-idx] = ( (g_bqSharedData.cellVolt[board][idx] & 0xFF) << 8 ) | ((g_bqSharedData.cellVolt[board][idx] >> 8) & 0xFF);
+	                PRINTF( "\tThe board = %d,  cell %d = 0x%x\r\n", board+1, (18-idx), data.cell_volt[TI_NUM_CELL-1-idx] );
 				}
 				for( uint8 idx = 0; idx < TI_NUM_GPIOADC; idx++ )
 				{
@@ -882,7 +883,7 @@ static void ecu8tr_TITask( void *arg )
 					tcp_write( pcb_data_client, (const void*)&data, sizeof(ECU8TR_TI_DATA_t), 1 );
 					tcp_output( pcb_data_client );
 					vTaskDelay( pdMS_TO_TICKS(500) );
-					PRINTF( "Send out a device cell data\r\n" );
+					//PRINTF( "Send out a device cell data\r\n" );
 				}
 				else
 				{
@@ -890,11 +891,9 @@ static void ecu8tr_TITask( void *arg )
 					ecu8tr_can_status = ECU8TR_CAN_TLE9012_WAKEUP;
 				}
 			}
-
-			g_bqSharedData.dataReady = 0;
-
-
 		 }
+
+        g_bqSharedData.dataReady = 0;
 
 		vTaskDelay( pdMS_TO_TICKS(500) ); // Yield to other tasks
 	}

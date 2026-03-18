@@ -51,10 +51,21 @@ static void delay_ms(uint32 ms)
 static void BQ_UpdateVoltages(uint16 cellRaw[TOTALBOARDS-1][TI_NUM_CELL], uint16 tempRaw[TOTALBOARDS-1][TI_NUM_GPIOADC] )
 {
     // Step 1: Write all cell voltages
+
+    if( g_bqSharedData.dataReady == 1 )
+    {
+        return;
+    }
+
 	for( uint8 board = 0; board < (TOTALBOARDS-1); board++ )
 	{
 		for (uint8 cell = 0; cell < TI_NUM_CELL; cell++)
+		{
+            #define ADC_RESOLUTION 0.1f  // 100 �V
 			g_bqSharedData.cellVolt[board][cell] = cellRaw[board][cell];
+            /*PRINTF( "\tThe board = %d,  cell %d = 0x%x, %d\r\n", board+1, (18-cell),
+                    g_bqSharedData.cellVolt[board][cell], (int)((float)g_bqSharedData.cellVolt[board][cell] * (ADC_RESOLUTION)) );*/
+		}
 		for (uint8 cell = 0; cell < TI_NUM_GPIOADC; cell++)
 			g_bqSharedData.cellTemp[board][cell] = tempRaw[board][cell];
 	}

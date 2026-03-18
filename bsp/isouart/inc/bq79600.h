@@ -8,7 +8,7 @@
 #ifndef BSP_ISOUART_INC_BQ79600_H_
 #define BSP_ISOUART_INC_BQ79600_H_
 
-#define TOTALBOARDS 2
+#define TOTALBOARDS 3
 #define TI_NUM_CELL 18
 #define TI_NUM_GPIOADC	8
 

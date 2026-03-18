@@ -758,6 +758,7 @@ uint8 Bq79600_Auto_Adr_Rev()
     	}
     	else
     	{
+            PRINTF( "The board address: Failed to find the AFE board\r\n" );
     		return 1;
     	}
     }
@@ -1119,19 +1120,25 @@ void bq79xxx_sampleVolt( uint16 pVolt[TOTALBOARDS-1][TI_NUM_CELL] )
 
 		//Both stack read and single read volts are OK.
 #if 1
-		BQ79600_Stack_Rd( 0x574, 18*2, g_stackReadVolt );
-		for( int board = 0; board < TOTALBOARDS-1; board++ )
+		if( 1 == BQ79600_Stack_Rd( 0x574, 18*2, g_stackReadVolt ) )
 		{
-			////PRINTF( "\r\nThe board = %d\r\n", board+1 );
+		    memset( (void*)pVolt, 0, sizeof(uint16) * (TOTALBOARDS-1) * TI_NUM_CELL );
+		}
+		else
+		{
+            for( int board = 0; board < TOTALBOARDS-1; board++ )
+            {
+                //PRINTF( "\r\nThe board = %d\r\n", board+1 );
 
-			for( int cell = 0; cell < TI_NUM_CELL; cell++ )
-			{
-				raw = g_stackReadVolt[board][2*cell];
-				raw = (raw<<8) | g_stackReadVolt[board][2*cell+1];
-				pVolt[board][cell] = raw;
-				PRINTF( "\tThe cell %d = 0x%x, %d\r\n", (18-cell), raw, (int)((float)raw * (ADC_RESOLUTION)) );
+                for( int cell = 0; cell < TI_NUM_CELL; cell++ )
+                {
+                    raw = g_stackReadVolt[board][2*cell];
+                    raw = (raw<<8) | g_stackReadVolt[board][2*cell+1];
+                    pVolt[board][cell] = raw;
+                    //PRINTF( "\tThe board = %d,  cell %d = 0x%x, %d\r\n", board+1, (18-cell), pVolt[board][cell], (int)((float)pVolt[board][cell] * (ADC_RESOLUTION)) );
 
-			}
+                }
+            }
 		}
 
 #else
@@ -1177,7 +1184,7 @@ void bq79xxx_sampleGPIO( uint16 pGPIO[TOTALBOARDS-1][TI_NUM_GPIOADC] )
 		BQ79600_Stack_Rd( 0x5AC, TI_NUM_GPIOADC*2, g_stackReadGPIO );
 		for( int board = 0; board < TOTALBOARDS-1; board++ )
 		{
-			PRINTF( "\r\nThe board = %d\r\n", board+1 );
+			//PRINTF( "\r\nThe board = %d\r\n", board+1 );
 			for( int gpio = 0; gpio < TI_NUM_GPIOADC; gpio++ )
 			{
 				uint8 tempVolt;
@@ -1188,12 +1195,12 @@ void bq79xxx_sampleGPIO( uint16 pGPIO[TOTALBOARDS-1][TI_NUM_GPIOADC] )
                 tempVolt = abs((uint8) ((raw) * VLSB_GPIO_RATIO));//VLSB_GPIO_RATIO;
                 if ( (tempVolt > 0) && ( tempVolt < 100))
 				{
-				   PRINTF("GPIO %d, raw = 0x%x, tempVolt = %d, temp = %f\r\n", gpio+1, raw, tempVolt, Gpio_ratio_value[tempVolt] );
+				   //PRINTF("GPIO %d, raw = 0x%x, tempVolt = %d, temp = %f\r\n", gpio+1, raw, tempVolt, Gpio_ratio_value[tempVolt] );
 
 				}
 				else
 				{
-					   PRINTF("GPIO %d = Error, raw = 0x%x, tempVolt = %d\r\n", gpio+1, raw, tempVolt );
+					   //PRINTF("GPIO %d = Error, raw = 0x%x, tempVolt = %d\r\n", gpio+1, raw, tempVolt );
 				}
 				////PRINTF( "\tThe cell %d = 0x%x, %d\r\n", (18-cell), raw, (int)((float)raw * (ADC_RESOLUTION)) );
 			}
