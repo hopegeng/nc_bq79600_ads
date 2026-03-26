@@ -97,9 +97,8 @@ void core0_main(void)
 	isouart_init();
 #endif
 
-#if !__TI__
 	ecu8tr_canServerInit();
-#endif
+
     ecu8_tcpServerInit();
     ecu8_udpServerInit();
     bq79600_taskInit();

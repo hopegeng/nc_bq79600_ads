@@ -37,6 +37,7 @@
 /*---------------------------------------------Function Declarations----------------------------------------------*/
 /*********************************************************************************************************************/
 uint32 can_doCanSend(void* lpParam);
+void can_test( void );
 
 
 /**< \brief DOCAN transmit (send) function pointer */
@@ -160,18 +161,26 @@ IFX_CONST IfxCan_Can_Pins Can01_pins =
 		IfxPort_PadDriver_cmosAutomotiveSpeed3
 };
 
+IFX_CONST IfxCan_Can_Pins Can02_pins =
+{
+        &IfxCan_TXD02_P15_0_OUT, IfxPort_OutputMode_pushPull,
+        &IfxCan_RXD02A_P15_1_IN, IfxPort_InputMode_pullUp,
+        IfxPort_PadDriver_cmosAutomotiveSpeed3
+};
 
+
+/* The CAN0N1 is used by ECU8Tr board */
 void initMcmcan(void)
 {
 
-#if 0
+#if 0       //The CAN PHY TLE9251 SBY pin for CAN0N2 and N3, to set to Low for working condition
     IfxPort_setPinModeOutput( &MODULE_P34, 2,  IfxPort_OutputMode_pushPull, IfxPort_OutputIdx_general);
     IfxPort_setPinLow( &MODULE_P34, 2 );
+
 
     IfxPort_setPinModeOutput( &MODULE_P34, 3,  IfxPort_OutputMode_pushPull, IfxPort_OutputIdx_general);
     IfxPort_setPinLow( &MODULE_P34, 3 );
 #endif
-
 
     /* ==========================================================================================
      * CAN module configuration and initialization:
@@ -203,11 +212,15 @@ void initMcmcan(void)
 	 * ==========================================================================================
 	 */
 	IfxCan_Can_initNodeConfig(&g_mcmcan.canNodeConfig, &g_mcmcan.canModule);
+#if 1
 	g_mcmcan.canNodeConfig.pins = &Can01_pins;
-
 	g_mcmcan.canNodeConfig.busLoopbackEnabled = FALSE;
 	g_mcmcan.canNodeConfig.nodeId = IfxCan_NodeId_1;
-
+#else
+    g_mcmcan.canNodeConfig.pins = &Can02_pins;
+    g_mcmcan.canNodeConfig.busLoopbackEnabled = FALSE;
+    g_mcmcan.canNodeConfig.nodeId = IfxCan_NodeId_2;
+#endif
 
 	g_mcmcan.canNodeConfig.clockSource = IfxCan_ClockSource_both;
 	g_mcmcan.canNodeConfig.frame.type = IfxCan_FrameType_transmitAndReceive;
@@ -406,6 +419,7 @@ uint32 can_doCanSend(void* lpParam)
 void start_can( void )
 {
 	initMcmcan();
+	////can_test();
 }
 
 void can_test( void )

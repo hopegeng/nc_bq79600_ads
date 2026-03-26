@@ -16,6 +16,10 @@
 #include <task.h>
 #include <Stm/Std/IfxStm.h>
 
+static uint16_t swap_u16(uint16_t v)
+{
+    return (uint16_t)(((v & 0x00FFU) << 8) | ((v & 0xFF00U) >> 8));
+}
 
 static void delayMillSecond( uint32 delay )
 {

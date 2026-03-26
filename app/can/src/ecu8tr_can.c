@@ -19,6 +19,9 @@
 #include "ecu8tr_can.h"
 #include "comm.h"
 #include "led.h"
+#include "bq_shared.h"
+#include "shell.h"
+#include "tools.h"
 
 // Updated structure for CAN message
 typedef struct {
@@ -73,10 +76,10 @@ static IfxCan_Status ecu8tr_can_encodeCellVolt( uint32 id, uint16 adc_values[4] 
 
 
     // Pack into low and high (little-endian, per DBC @1+)
-    // low:  Cell_V_01 (bits 0–15), Cell_V_02 (bits 16–31)
+    // low:  Cell_V_01 (bits 0ï¿½15), Cell_V_02 (bits 16ï¿½31)
     low = ((uint32_t)adc_values[1] << 16) | (uint32_t)adc_values[0];
 
-    // high: Cell_V_03 (bits 0–15), Cell_V_04 (bits 16–31)
+    // high: Cell_V_03 (bits 0ï¿½15), Cell_V_04 (bits 16ï¿½31)
     high = ((uint32_t)adc_values[3] << 16) | (uint32_t)adc_values[2];
 
     return can_transmitCanMessage( id, low, high );
@@ -93,16 +96,61 @@ static IfxCan_Status ecu8tr_can_encodeSarLowHigh( uint16 adc_values[4] )
 
 
     // Pack into low and high (little-endian, per DBC @1+)
-    // low:  Cell_V_01 (bits 0–15), Cell_V_02 (bits 16–31)
+    // low:  Cell_V_01 (bits 0ï¿½15), Cell_V_02 (bits 16ï¿½31)
     low = ((uint32_t)adc_values[1] << 16) | (uint32_t)adc_values[0];
 
-    // high: Cell_V_03 (bits 0–15), Cell_V_04 (bits 16–31)
+    // high: Cell_V_03 (bits 0ï¿½15), Cell_V_04 (bits 16ï¿½31)
     high = ((uint32_t)adc_values[3] << 16) | (uint32_t)adc_values[2];
 
     return can_transmitCanMessage( id, low, high );
 
 }
 
+static void ecu8tr_TITask_CAN(void)
+{
+    uint16_t cell_volt[4];
+    IfxCan_Status tx_status;
+
+    for (;;)
+    {
+        if (g_bqSharedData.dataReady)
+        {
+            __dsync();
+
+            for (uint8_t board = 0; board < (TOTALBOARDS - 1U); board++)
+            {
+                for (uint8_t cell = 0; cell < TI_NUM_CELL; cell += 3U)
+                {
+                    cell_volt[0] = (cell+1)<<8 | (board+1);
+                    for (uint8_t idx = 1; idx < 4U; idx++)
+                    {
+                        uint8_t src_cell = (uint8_t)(TI_NUM_CELL - (cell + idx));
+                        cell_volt[idx] = swap_u16(g_bqSharedData.cellVolt[board][src_cell]);
+
+                        PRINTF("\tCAN: The board = %u, cell %u = 0x%04X\r\n",
+                               (unsigned int)(board + 1U),
+                               (unsigned int)(cell + idx),
+                               (unsigned int)cell_volt[idx]);
+                    }
+
+                    tx_status = ecu8tr_can_encodeCellVolt( 0x88, cell_volt );
+                    if( pdFALSE == xSemaphoreTake(canTxSemaphore, pdMS_TO_TICKS(400)) || tx_status != IfxCan_Status_ok )
+                    {
+                        ecu8tr_can_status = ECU8TR_CAN_TLE9012_WAKEUP;
+                    }
+                    else
+                    {
+                        ecu8tr_can_status = ECU8TR_CAN_DATA_STREAMING;
+                    }
+                }
+            }
+
+            g_bqSharedData.dataReady = 0U;
+        }
+
+        vTaskDelay(pdMS_TO_TICKS(500));
+    }
+}
 
 static void ecu8tr_canServerTask( void *arg )
 {
@@ -117,7 +165,9 @@ static void ecu8tr_canServerTask( void *arg )
 	{
 		while( TRUE )
 		{
-			vTaskDelay( 1000 );
+			//vTaskDelay( 1000 );
+			PRINTF( "This is the CAN TASK\r\n" );
+			ecu8tr_TITask_CAN();
 		}
 	}
 
@@ -253,6 +303,6 @@ void ecu8tr_canServerInit( void )
 		__debug();
     }
 
-    xTaskCreate( ecu8tr_canServerTask, "CANServer", configMINIMAL_STACK_SIZE, NULL, 0, NULL);
+ ////   xTaskCreate( ecu8tr_canServerTask, "CANServer", configMINIMAL_STACK_SIZE, NULL, 0, NULL);
 }
 
